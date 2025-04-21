@@ -100,6 +100,7 @@ def simulate_nonlinear_system(x0, t_span, dt, input_func, params):
     返回:
     模拟结果字典，包含时间、状态、输出和输入
     """
+    print(f"开始非线性系统模拟：初始位置={x0[0]}, 初始速度={x0[1]}")
     # 定义包含输入的系统动力学
     def dynamics_with_input(t, x):
         u = input_func(t, x)
@@ -112,6 +113,7 @@ def simulate_nonlinear_system(x0, t_span, dt, input_func, params):
         
         # 创建时间向量
         t_eval = np.arange(t_span[0], t_span[1], dt)
+        print(f"求解微分方程，时间范围：{t_span}，时间步长：{dt}，时间点数：{len(t_eval)}")
         
         solution = solve_ivp(
             dynamics_with_input,
@@ -122,6 +124,7 @@ def simulate_nonlinear_system(x0, t_span, dt, input_func, params):
             rtol=1e-6,
             atol=1e-9
         )
+        print(f"微分方程求解完成，成功计算了 {len(solution.t)} 个时间点")
         
         # 提取结果
         t = solution.t

@@ -67,13 +67,15 @@ def parse_args():
     parser.add_argument('--ki', type=float, default=0.0, help='PID控制器积分增益')
     parser.add_argument('--kd', type=float, default=20.0, help='PID控制器微分增益')
     
-    # 模拟参数
+    # 模拟参数 - 减少模拟时间方便测试
     parser.add_argument('--t_span', type=float, default=2.0, help='模拟时间 (s)')
     parser.add_argument('--dt', type=float, default=0.01, help='时间步长 (s)')
     parser.add_argument('--x0', type=str, default='0.26,0,200000,200000',
                         help='初始状态 (逗号分隔)')
-    parser.add_argument('--pid_duration', type=float, default=28.0, 
+    parser.add_argument('--pid_duration', type=float, default=5.0, 
                         help='PID控制持续时间 (s)')
+    parser.add_argument('--use_pid_trajectory', action='store_true', 
+                        help='在线性和非线性模型中使用与PID控制相同的轨迹函数')
     
     # 输出参数
     parser.add_argument('--save_figs', action='store_true', help='保存图表')
@@ -157,14 +159,19 @@ def run_linear_analysis(model, args):
     
     # 解析初始状态
     try:
-        x0_values = [float(x) for x in args.x0.split(',')]
-        # 对于线性模型，需要转换为偏差状态
-        x0_linear = np.array([
-            x0_values[0] - model.x_eq,
-            x0_values[1] - model.v_eq,
-            x0_values[2] - model.P_l_eq,
-            x0_values[3] - model.P_r_eq
-        ])
+        # 使用与PID控制相同的初始点
+        if args.use_pid_trajectory:
+            # 从0开始，与PID控制一致
+            x0_linear = np.array([-model.x_eq, 0, 0, 0])
+        else:
+            # 对于线性模型，需要转换为偏差状态
+            x0_values = [float(x) for x in args.x0.split(',')]
+            x0_linear = np.array([
+                x0_values[0] - model.x_eq,
+                x0_values[1] - model.v_eq,
+                x0_values[2] - model.P_l_eq,
+                x0_values[3] - model.P_r_eq
+            ])
     except Exception as e:
         print(f"解析初始状态出错: {e}")
         traceback.print_exc()
@@ -176,7 +183,8 @@ def run_linear_analysis(model, args):
         linear_response = model.simulate_response(
             x0=x0_linear, 
             t_span=(0, args.t_span),
-            dt=args.dt
+            dt=args.dt,
+            use_setpoint=args.use_pid_trajectory
         )
     except Exception as e:
         print(f"模拟线性系统响应出错: {e}")
@@ -186,7 +194,7 @@ def run_linear_analysis(model, args):
     # 绘制图表
     print("生成图表...")
     try:
-        fig_response = plot_response(linear_response, title_prefix="线性模型")
+        fig_response = plot_response(linear_response, title_prefix="Linear Model")
         fig_state_space = plot_state_space(linear_response)
         fig_root_locus = plot_root_locus(model.sys)
         fig_bode = plot_bode(model.sys)
@@ -238,7 +246,11 @@ def run_nonlinear_analysis(model, args):
     
     # 解析初始状态
     try:
-        x0_values = [float(x) for x in args.x0.split(',')]
+        if args.use_pid_trajectory:
+            # 从0开始，与PID控制一致
+            x0_values = [0.0, 0, model.P_l_eq, model.P_r_eq]
+        else:
+            x0_values = [float(x) for x in args.x0.split(',')]
     except Exception as e:
         print(f"解析初始状态出错: {e}")
         traceback.print_exc()
@@ -250,7 +262,8 @@ def run_nonlinear_analysis(model, args):
         nonlinear_response = model.simulate_nonlinear(
             x0=x0_values,
             t_span=(0, args.t_span),
-            dt=args.dt
+            dt=args.dt,
+            use_setpoint=args.use_pid_trajectory
         )
     except Exception as e:
         print(f"模拟非线性系统响应出错: {e}")
@@ -260,7 +273,7 @@ def run_nonlinear_analysis(model, args):
     # 绘制图表
     print("生成图表...")
     try:
-        fig_response = plot_response(nonlinear_response, title_prefix="非线性模型")
+        fig_response = plot_response(nonlinear_response, title_prefix="Nonlinear Model")
         fig_state_space = plot_state_space(nonlinear_response)
     except Exception as e:
         print(f"绘制图表出错: {e}")
@@ -298,7 +311,11 @@ def run_comparison_analysis(model, args):
     
     # 解析初始状态
     try:
-        x0_values = [float(x) for x in args.x0.split(',')]
+        if args.use_pid_trajectory:
+            # 从0开始，与PID控制一致
+            x0_values = [0.0, 0, model.P_l_eq, model.P_r_eq]
+        else:
+            x0_values = [float(x) for x in args.x0.split(',')]
     except Exception as e:
         print(f"解析初始状态出错: {e}")
         traceback.print_exc()
@@ -310,7 +327,8 @@ def run_comparison_analysis(model, args):
         error_analysis, linear_response, nonlinear_response = model.compare_linear_nonlinear(
             x0=np.array(x0_values),
             t_span=(0, args.t_span),
-            dt=args.dt
+            dt=args.dt,
+            use_setpoint=args.use_pid_trajectory
         )
     except Exception as e:
         print(f"比较线性和非线性模型出错: {e}")
@@ -371,6 +389,7 @@ def run_pid_simulation(model, args):
     
     # 模拟PID控制响应
     print(f"模拟PID控制，持续时间: {args.pid_duration}秒...")
+    print(f"PID控制将从位置0开始，目标最大位置: 0.156m")
     try:
         pid_response = model.simulate_pid_control(
             t_span=(0, args.pid_duration),
@@ -499,8 +518,12 @@ def main():
     # 记录开始时间
     start_time = time.time()
     
+    print("程序开始运行，开始解析命令行参数...")
+    
     # 解析命令行参数
     args = parse_args()
+    
+    print(f"使用的运行模式: {args.mode}")
     
     # 构建系统参数
     params = build_params(args)
@@ -558,12 +581,17 @@ def main():
             traceback.print_exc()
     
     if args.mode in ['pid', 'all']:
+        print("开始运行PID控制模拟...")
         try:
             pid_response, fig_pid = run_pid_simulation(model, args)
+            print("PID控制模拟完成")
             if pid_response is not None:
                 results['pid_simulation'] = {
                     'response': pid_response
                 }
+                print("成功保存PID模拟结果")
+            else:
+                print("警告: PID模拟返回了空结果")
         except Exception as e:
             print(f"运行PID控制模拟失败: {e}")
             traceback.print_exc()

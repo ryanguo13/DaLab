@@ -241,8 +241,10 @@ class PneumaticStateSpaceModel:
         
         return self.K, sys_cl
     
-    def simulate_response(self, x0=None, t_span=(0, 10), dt=0.01):
+    def simulate_response(self, x0=None, t_span=(0, 10), dt=0.01, use_setpoint=True):
         """模拟线性系统响应"""
+        from .pid_controller import generate_setpoint_curve
+        
         if self.sys is None:
             self.linearize_system()
             
@@ -253,6 +255,16 @@ class PneumaticStateSpaceModel:
         # 生成时间向量
         t = np.arange(t_span[0], t_span[1], dt)
         
+        # 如果需要使用与PID控制相同的setpoint函数
+        if use_setpoint:
+            # 生成参考轨迹
+            setpoint = np.array([generate_setpoint_curve(ti, x_min=0.0, x_max=0.156) for ti in t])
+            # 设定为输入信号
+            U = setpoint
+        else:
+            # 使用零输入
+            U = np.zeros_like(t)
+        
         # 如果已设计状态反馈控制器，使用闭环系统
         if self.K is not None:
             # 计算闭环系统矩阵
@@ -261,14 +273,14 @@ class PneumaticStateSpaceModel:
             
             try:
                 # 尝试使用新版本的forced_response函数（返回2个值）
-                response = ctrl.forced_response(sys_cl, T=t, U=np.zeros_like(t), X0=x0)
+                response = ctrl.forced_response(sys_cl, T=t, U=U, X0=x0)
                 # 新版本的control库，response是一个对象，包含time, outputs, states等属性
                 y_cl = response.y
                 x_cl = response.x
             except ValueError:
                 try:
                     # 尝试使用旧版本的forced_response函数（返回3个值）
-                    _, y_cl, x_cl = ctrl.forced_response(sys_cl, T=t, U=np.zeros_like(t), X0=x0)
+                    _, y_cl, x_cl = ctrl.forced_response(sys_cl, T=t, U=U, X0=x0)
                 except Exception as e:
                     print(f"模拟系统响应出错: {e}")
                     # 返回空的响应结构
@@ -286,20 +298,21 @@ class PneumaticStateSpaceModel:
                 'time': t,
                 'states': x_cl,
                 'output': y_cl,
-                'input': u_cl
+                'input': u_cl,
+                'setpoint': U  # 添加setpoint到响应
             }
         else:
             # 模拟开环系统响应
             try:
                 # 尝试使用新版本的forced_response函数
-                response = ctrl.forced_response(self.sys, T=t, U=np.zeros_like(t), X0=x0)
+                response = ctrl.forced_response(self.sys, T=t, U=U, X0=x0)
                 # 新版本的control库，response是一个对象
                 y = response.y
                 x = response.x
             except ValueError:
                 try:
                     # 尝试使用旧版本的forced_response函数
-                    _, y, x = ctrl.forced_response(self.sys, T=t, U=np.zeros_like(t), X0=x0)
+                    _, y, x = ctrl.forced_response(self.sys, T=t, U=U, X0=x0)
                 except Exception as e:
                     print(f"模拟系统响应出错: {e}")
                     # 返回空的响应结构
@@ -314,21 +327,55 @@ class PneumaticStateSpaceModel:
                 'time': t,
                 'states': x,
                 'output': y,
-                'input': np.zeros_like(t)
+                'input': U,
+                'setpoint': U  # 添加setpoint到响应
             }
             
         return response
     
-    def simulate_nonlinear(self, x0=None, t_span=(0, 10), dt=0.01, input_func=None):
+    def simulate_nonlinear(self, x0=None, t_span=(0, 10), dt=0.01, input_func=None, use_setpoint=True):
         """模拟非线性系统响应"""
-        # 如果没有指定初始状态，则使用平衡点附近
+        from .pid_controller import generate_setpoint_curve
+        
+        # 如果没有指定初始状态，则始终从0开始，与PID控制一致
         if x0 is None:
-            x0 = [self.x_eq, 0, self.P_l_eq, self.P_r_eq]
+            if use_setpoint:
+                # 使用与PID控制相同的起始位置：从0开始
+                x0 = [0.0, 0, self.P_l_eq, self.P_r_eq]
+            else:
+                # 传统方式，从平衡点开始
+                x0 = [self.x_eq, 0, self.P_l_eq, self.P_r_eq]
             
-        # 如果没有指定输入函数，则使用零输入或状态反馈
+        # 如果没有指定输入函数，则根据参数选择使用方式
         if input_func is None:
-            if self.K is not None:
-                # 使用状态反馈控制
+            if use_setpoint:
+                # 使用与PID控制相同的setpoint函数
+                def input_func(t, x):
+                    # 计算设定点
+                    setpoint = generate_setpoint_curve(t, x_min=0.0, x_max=0.156)
+                    
+                    # 如果已经设计了状态反馈控制器，使用它跟踪设定点
+                    if self.K is not None:
+                        try:
+                            # 计算相对于设定点的状态偏差
+                            x_deviation = np.array([
+                                x[0] - setpoint,
+                                x[1] - 0,
+                                x[2] - self.P_l_eq,
+                                x[3] - self.P_r_eq
+                            ])
+                            # 计算控制输入
+                            u = -np.dot(self.K, x_deviation)
+                            return float(u)
+                        except Exception as e:
+                            print(f"控制器计算出错: {e}, 返回零输入")
+                            return 0.0
+                    else:
+                        # 没有控制器时，直接返回设定点和当前位置的差值作为控制输入
+                        # 这里使用一个简单的比例控制
+                        return 5.0 * (setpoint - x[0])
+            elif self.K is not None:
+                # 使用标准状态反馈控制
                 def input_func(t, x):
                     try:
                         # 计算相对于平衡点的状态偏差
@@ -350,14 +397,28 @@ class PneumaticStateSpaceModel:
                     return 0.0
         
         # 使用通用非线性模拟函数
-        return simulate_nonlinear_system(x0, t_span, dt, input_func, self.params)
+        response = simulate_nonlinear_system(x0, t_span, dt, input_func, self.params)
+        
+        # 如果使用setpoint，将其添加到响应中
+        if use_setpoint:
+            # 计算并添加设定点到响应中
+            response['setpoint'] = np.array([generate_setpoint_curve(t, x_min=0.0, x_max=0.156) for t in response['time']])
+        
+        return response
     
-    def compare_linear_nonlinear(self, x0=None, t_span=(0, 10), dt=0.01):
+    def compare_linear_nonlinear(self, x0=None, t_span=(0, 10), dt=0.01, use_setpoint=True):
         """比较线性和非线性模型的响应"""
-        # 如果没有指定初始状态，则使用位置偏移
+        # 如果没有指定初始状态，则根据是否使用setpoint选择不同的初始值
         if x0 is None:
-            x0 = np.array([self.x_eq + 0.01, 0, self.P_l_eq, self.P_r_eq])
-            x0_linear = np.array([0.01, 0, 0, 0])  # 线性模型使用偏差状态
+            if use_setpoint:
+                # 如果使用setpoint，从0开始，与PID控制一致
+                x0 = np.array([0.0, 0, self.P_l_eq, self.P_r_eq])
+                # 对于线性模型，偏差状态是相对于平衡点的
+                x0_linear = np.array([-self.x_eq, 0, 0, 0])
+            else:
+                # 传统比较方式，从平衡点附近开始
+                x0 = np.array([self.x_eq + 0.01, 0, self.P_l_eq, self.P_r_eq])
+                x0_linear = np.array([0.01, 0, 0, 0])  # 线性模型使用偏差状态
         else:
             # 为线性模型计算偏差状态
             x0_linear = np.array([
@@ -367,9 +428,9 @@ class PneumaticStateSpaceModel:
                 x0[3] - self.P_r_eq
             ])
         
-        # 模拟线性和非线性系统响应
-        linear_response = self.simulate_response(x0=x0_linear, t_span=t_span, dt=dt)
-        nonlinear_response = self.simulate_nonlinear(x0=x0, t_span=t_span, dt=dt)
+        # 模拟线性和非线性系统响应，使用相同的setpoint函数
+        linear_response = self.simulate_response(x0=x0_linear, t_span=t_span, dt=dt, use_setpoint=use_setpoint)
+        nonlinear_response = self.simulate_nonlinear(x0=x0, t_span=t_span, dt=dt, use_setpoint=use_setpoint)
         
         # 确保两个响应的时间向量长度相同
         min_length = min(len(linear_response['time']), len(nonlinear_response['time']))
@@ -461,6 +522,7 @@ class PneumaticStateSpaceModel:
         
         # 创建模糊PID控制器
         pid = FuzzyPID(kp_base=kp, ki_base=ki, kd_base=kd)
+        print(f"创建PID控制器 kp={kp}, ki={ki}, kd={kd}")
         
         # 定义控制输入函数
         def pid_input(t, x):
@@ -478,11 +540,14 @@ class PneumaticStateSpaceModel:
             
             return output
         
-        # 初始状态 - 从平衡点开始
+        # 初始状态 - 总是从0开始
         x0 = [0.0, 0, self.P_l_eq, self.P_r_eq]
+        print(f"PID控制初始状态: position={x0[0]}, velocity={x0[1]}")
         
         # 模拟非线性系统响应
+        print("开始PID非线性系统模拟...")
         response = self.simulate_nonlinear(x0=x0, t_span=t_span, dt=dt, input_func=pid_input)
+        print(f"PID模拟完成，获得数据点数: {len(response['time'])}")
         
         # 计算并添加设定点到响应中
         response['setpoint'] = np.array([generate_setpoint_curve(t) for t in response['time']])

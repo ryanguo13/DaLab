@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-可视化模块
+Visualization Module
 =========
-用于数据可视化、绘制系统响应、相空间轨迹和频域分析图表。
-
+For data visualization, plotting system responses, phase space trajectories and 
+frequency domain analysis charts.
 """
 
 import numpy as np
@@ -12,195 +12,204 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import control as ctrl
 
-def plot_response(response, title_prefix="系统"):
+def plot_response(response, title_prefix="System"):
     """
-    绘制系统响应的时间域图表
+    Plot time domain response charts
     
-    参数:
-    response: 含有时间、状态、输出和输入的响应字典
-    title_prefix: 图表标题前缀
+    Parameters:
+    response: Dictionary containing time, states, output and input
+    title_prefix: Chart title prefix
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 提取数据
+    # Extract data
     time = response['time']
     states = response['states']
     output = response['output']
     control_input = response['input']
     
-    # 修正输出和状态的维度
+    # Check if setpoint is provided in the response
+    has_setpoint = 'setpoint' in response
+    setpoint = response.get('setpoint', None)
+    
+    # Fix dimensions
     if output.ndim > 1:
         output = output.flatten()
         
-    # 修正状态矩阵的维度
-    # 确保状态矩阵是(4, n)形状
+    # Fix state matrix dimensions
     if states.ndim == 1:
-        # 如果状态是一维的，将其展开为二维
+        # If state is one-dimensional, reshape to 2D
         states = states.reshape(1, -1)
     
-    # 创建2x2的子图布局
+    # Create 2x2 subplot layout
     fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-    fig.suptitle(f"{title_prefix}响应", fontsize=16)
+    fig.suptitle(f"{title_prefix} Response", fontsize=16)
     
-    # 位置图 (输出)
-    axs[0, 0].plot(time, output, 'b-', linewidth=2)
-    axs[0, 0].set_title('位置响应')
-    axs[0, 0].set_xlabel('时间 (s)')
-    axs[0, 0].set_ylabel('位置 (m)')
+    # Position plot (output)
+    axs[0, 0].plot(time, output, 'b-', linewidth=2, label='Actual Position')
+    
+    # If setpoint is available, plot it
+    if has_setpoint:
+        axs[0, 0].plot(time, setpoint, 'r--', linewidth=2, label='Setpoint')
+        axs[0, 0].legend()
+        
+    axs[0, 0].set_title('Position Response')
+    axs[0, 0].set_xlabel('Time (s)')
+    axs[0, 0].set_ylabel('Position (m)')
     axs[0, 0].grid(True)
     
-    # 速度图 (状态1)
+    # Velocity plot (state 1)
     axs[0, 1].plot(time, states[1], 'r-', linewidth=2)
-    axs[0, 1].set_title('速度响应')
-    axs[0, 1].set_xlabel('时间 (s)')
-    axs[0, 1].set_ylabel('速度 (m/s)')
+    axs[0, 1].set_title('Velocity Response')
+    axs[0, 1].set_xlabel('Time (s)')
+    axs[0, 1].set_ylabel('Velocity (m/s)')
     axs[0, 1].grid(True)
     
-    # 左右气室压力图 (状态2,3)
-    axs[1, 0].plot(time, states[2]/1000, 'g-', linewidth=2, label='左气室')
-    axs[1, 0].plot(time, states[3]/1000, 'm-', linewidth=2, label='右气室')
-    axs[1, 0].set_title('气室压力响应')
-    axs[1, 0].set_xlabel('时间 (s)')
-    axs[1, 0].set_ylabel('压力 (kPa)')
+    # Left and right chamber pressure plot (states 2,3)
+    axs[1, 0].plot(time, states[2]/1000, 'g-', linewidth=2, label='Left Chamber')
+    axs[1, 0].plot(time, states[3]/1000, 'm-', linewidth=2, label='Right Chamber')
+    axs[1, 0].set_title('Chamber Pressure Response')
+    axs[1, 0].set_xlabel('Time (s)')
+    axs[1, 0].set_ylabel('Pressure (kPa)')
     axs[1, 0].legend()
     axs[1, 0].grid(True)
     
-    # 控制输入图
-    # 修复维度不匹配问题
+    # Control input plot
+    # Fix dimension mismatch
     if control_input.ndim > 1:
         control_input = control_input.flatten()
     axs[1, 1].plot(time, control_input, 'k-', linewidth=2)
-    axs[1, 1].set_title('控制输入')
-    axs[1, 1].set_xlabel('时间 (s)')
-    axs[1, 1].set_ylabel('阀门位置')
+    axs[1, 1].set_title('Control Input')
+    axs[1, 1].set_xlabel('Time (s)')
+    axs[1, 1].set_ylabel('Valve Position')
     axs[1, 1].grid(True)
     
-    # 调整布局
+    # Adjust layout
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     return fig
 
 def plot_state_space(response):
     """
-    绘制状态空间轨迹
+    Plot state space trajectory
     
-    参数:
-    response: 含有状态的响应字典
+    Parameters:
+    response: Dictionary containing states
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 提取数据
+    # Extract data
     states = response['states']
     
-    # 修正状态矩阵的维度
+    # Fix state matrix dimensions
     if states.ndim == 1:
         states = states.reshape(1, -1)
     
-    # 创建3D图形
+    # Create 3D figure
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     
-    # 检查状态数据是否有效
-    if states.shape[1] > 0:  # 确保状态数据不为空
-        # 绘制3D轨迹 (位置、速度、左气室压力)
+    # Check if state data is valid
+    if states.shape[1] > 0:  # Ensure state data is not empty
+        # Plot 3D trajectory (position, velocity, left chamber pressure)
         ax.plot3D(states[0], states[1], states[2]/1000, 'blue', linewidth=2)
         
-        # 添加起点和终点标记
-        ax.scatter(states[0, 0], states[1, 0], states[2, 0]/1000, color='green', s=100, label='起点')
-        ax.scatter(states[0, -1], states[1, -1], states[2, -1]/1000, color='red', s=100, label='终点')
+        # Add start and end markers
+        ax.scatter(states[0, 0], states[1, 0], states[2, 0]/1000, color='green', s=100, label='Start')
+        ax.scatter(states[0, -1], states[1, -1], states[2, -1]/1000, color='red', s=100, label='End')
     else:
-        # 数据为空时，不绘制轨迹，只显示提示信息
-        ax.text(0, 0, 0, "无有效状态数据", fontsize=14)
+        # If data is empty, don't plot trajectory, just show a message
+        ax.text(0, 0, 0, "No valid state data", fontsize=14)
     
-    # 设置标签和标题
-    ax.set_xlabel('位置 (m)')
-    ax.set_ylabel('速度 (m/s)')
-    ax.set_zlabel('左气室压力 (kPa)')
-    ax.set_title('状态空间轨迹')
+    # Set labels and title
+    ax.set_xlabel('Position (m)')
+    ax.set_ylabel('Velocity (m/s)')
+    ax.set_zlabel('Left Chamber Pressure (kPa)')
+    ax.set_title('State Space Trajectory')
     
-    # 添加图例
+    # Add legend
     ax.legend()
     
-    # 调整视角
+    # Adjust view angle
     ax.view_init(elev=30, azim=45)
     
     return fig
 
 def plot_root_locus(system):
     """
-    绘制系统根轨迹
+    Plot system root locus
     
-    参数:
-    system: 控制系统对象
+    Parameters:
+    system: Control system object
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 创建图形
+    # Create figure
     fig, ax = plt.subplots(figsize=(10, 8))
     
     try:
-        # 尝试使用root_locus函数绘制根轨迹
-        # 在较新版本的control库中，不再支持Plot参数
+        # Try using root_locus function to plot root locus
+        # In newer versions of control library, Plot parameter is not supported
         ctrl.root_locus(system, grid=True)
-        plt.title('系统根轨迹')
+        plt.title('System Root Locus')
         plt.grid(True)
     except Exception as e:
-        # 如果出现异常，打印错误信息并创建一个简单的说明图
-        print(f"绘制根轨迹时出错: {e}")
-        plt.text(0.5, 0.5, '无法绘制根轨迹\n可能是control库版本问题',
+        # If an exception occurs, print error message and create a simple explanation
+        print(f"Error plotting root locus: {e}")
+        plt.text(0.5, 0.5, 'Cannot plot root locus\nPossible control library version issue',
                  horizontalalignment='center', verticalalignment='center',
                  transform=ax.transAxes, fontsize=14)
-        plt.title('系统根轨迹 (失败)')
+        plt.title('System Root Locus (Failed)')
     
     return fig
 
 def plot_bode(system):
     """
-    绘制系统Bode图
+    Plot system Bode diagram
     
-    参数:
-    system: 控制系统对象
+    Parameters:
+    system: Control system object
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 创建图形
+    # Create figure
     fig, axs = plt.subplots(2, 1, figsize=(10, 10))
-    fig.suptitle('系统Bode图', fontsize=16)
+    fig.suptitle('System Bode Diagram', fontsize=16)
     
     try:
-        # 直接使用control库的频率响应函数计算而不是绘图
+        # Get frequency response data using control library
         freq_resp = ctrl.frequency_response(system, np.logspace(-2, 3, 500))
         
-        # 提取幅度和相位数据
+        # Extract magnitude and phase data
         omega = freq_resp.omega
         mag = 20 * np.log10(np.abs(freq_resp.fresp[0][0]))
         phase = np.angle(freq_resp.fresp[0][0], deg=True)
         
-        # 手动绘制Bode图
-        # 幅度图
+        # Manually plot Bode diagram
+        # Magnitude plot
         axs[0].semilogx(omega, mag, 'b-')
-        axs[0].set_title('幅度图')
-        axs[0].set_ylabel('幅度 (dB)')
-        axs[0].set_xlabel('频率 (rad/s)')
+        axs[0].set_title('Magnitude Plot')
+        axs[0].set_ylabel('Magnitude (dB)')
+        axs[0].set_xlabel('Frequency (rad/s)')
         axs[0].grid(True, which='both')
         
-        # 相位图
+        # Phase plot
         axs[1].semilogx(omega, phase, 'r-')
-        axs[1].set_title('相位图')
-        axs[1].set_ylabel('相位 (度)')
-        axs[1].set_xlabel('频率 (rad/s)')
+        axs[1].set_title('Phase Plot')
+        axs[1].set_ylabel('Phase (deg)')
+        axs[1].set_xlabel('Frequency (rad/s)')
         axs[1].grid(True, which='both')
     except Exception as e:
-        # 如果出现异常，打印错误信息并创建一个简单的说明图
-        print(f"绘制Bode图时出错: {e}")
-        axs[0].text(0.5, 0.5, '无法绘制Bode图\n可能是control库版本问题',
+        # If an exception occurs, print error message and create a simple explanation
+        print(f"Error plotting Bode diagram: {e}")
+        axs[0].text(0.5, 0.5, 'Cannot plot Bode diagram\nPossible control library version issue',
                    horizontalalignment='center', verticalalignment='center',
                    transform=axs[0].transAxes, fontsize=14)
-        axs[1].text(0.5, 0.5, '无法绘制Bode图\n可能是control库版本问题',
+        axs[1].text(0.5, 0.5, 'Cannot plot Bode diagram\nPossible control library version issue',
                    horizontalalignment='center', verticalalignment='center',
                    transform=axs[1].transAxes, fontsize=14)
     
@@ -209,114 +218,117 @@ def plot_bode(system):
 
 def plot_pid_response(pid_response):
     """
-    绘制PID控制响应图
+    Plot PID control response chart
     
-    参数:
-    pid_response: 含有PID控制响应的字典
+    Parameters:
+    pid_response: Dictionary containing PID control response
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 提取数据
+    # Extract data
     time = pid_response['time']
     states = pid_response['states']
     output = pid_response['output']
     control_input = pid_response['input']
     setpoint = pid_response['setpoint']
     
-    # 修正输出和状态的维度
+    # Fix dimensions
     if output.ndim > 1:
         output = output.flatten()
         
-    # 修正状态矩阵的维度
-    # 确保状态矩阵是(4, n)形状
+    # Fix state matrix dimensions
+    # Ensure state matrix is of shape (4, n)
     if states.ndim == 1:
-        # 如果状态是一维的，将其展开为二维
+        # If state is one-dimensional, reshape to 2D
         states = states.reshape(1, -1)
     
-    # 创建3x2的子图布局
+    # Create 3x2 subplot layout
     fig = plt.figure(figsize=(14, 12))
     gs = GridSpec(3, 2, figure=fig)
     
-    # 位置跟踪图
+    # Position tracking plot
     ax1 = fig.add_subplot(gs[0, :])
-    ax1.plot(time, setpoint, 'r--', linewidth=2, label='设定点')
-    ax1.plot(time, output, 'b-', linewidth=2, label='实际位置')
-    ax1.set_title('PID控制位置跟踪')
-    ax1.set_xlabel('时间 (s)')
-    ax1.set_ylabel('位置 (m)')
+    ax1.plot(time, setpoint, 'r--', linewidth=2, label='Setpoint')
+    ax1.plot(time, output, 'b-', linewidth=2, label='Actual Position')
+    ax1.set_title('PID Control Position Tracking')
+    ax1.set_xlabel('Time (s)')
+    ax1.set_ylabel('Position (m)')
     ax1.grid(True)
     ax1.legend()
     
-    # 跟踪误差图
+    # Tracking error plot
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.plot(time, setpoint - output, 'g-', linewidth=2)
-    ax2.set_title('跟踪误差')
-    ax2.set_xlabel('时间 (s)')
-    ax2.set_ylabel('误差 (m)')
+    ax2.set_title('Tracking Error')
+    ax2.set_xlabel('Time (s)')
+    ax2.set_ylabel('Error (m)')
     ax2.grid(True)
     
-    # 控制输入图
+    # Control input plot
     ax3 = fig.add_subplot(gs[1, 1])
     ax3.plot(time, control_input, 'k-', linewidth=2)
-    ax3.set_title('控制输入')
-    ax3.set_xlabel('时间 (s)')
-    ax3.set_ylabel('阀门位置')
+    ax3.set_title('Control Input')
+    ax3.set_xlabel('Time (s)')
+    ax3.set_ylabel('Valve Position')
     ax3.grid(True)
     
-    # 气室压力图
+    # Chamber pressure plot
     ax4 = fig.add_subplot(gs[2, 0])
-    ax4.plot(time, states[2]/1000, 'g-', linewidth=2, label='左气室')
-    ax4.plot(time, states[3]/1000, 'm-', linewidth=2, label='右气室')
-    ax4.set_title('气室压力')
-    ax4.set_xlabel('时间 (s)')
-    ax4.set_ylabel('压力 (kPa)')
+    ax4.plot(time, states[2]/1000, 'g-', linewidth=2, label='Left Chamber')
+    ax4.plot(time, states[3]/1000, 'm-', linewidth=2, label='Right Chamber')
+    ax4.set_title('Chamber Pressure')
+    ax4.set_xlabel('Time (s)')
+    ax4.set_ylabel('Pressure (kPa)')
     ax4.grid(True)
     ax4.legend()
     
-    # 速度图
+    # Velocity plot
     ax5 = fig.add_subplot(gs[2, 1])
     ax5.plot(time, states[1], 'r-', linewidth=2)
-    ax5.set_title('速度')
-    ax5.set_xlabel('时间 (s)')
-    ax5.set_ylabel('速度 (m/s)')
+    ax5.set_title('Velocity')
+    ax5.set_xlabel('Time (s)')
+    ax5.set_ylabel('Velocity (m/s)')
     ax5.grid(True)
     
-    # 调整布局
+    # Adjust layout
     plt.tight_layout()
     
     return fig
 
 def plot_comparison(linear_response, nonlinear_response, eq_point=None):
     """
-    绘制线性和非线性模型比较图
+    Plot linear and nonlinear model comparison
     
-    参数:
-    linear_response: 线性模型响应
-    nonlinear_response: 非线性模型响应
-    eq_point: 平衡点参数字典
+    Parameters:
+    linear_response: Linear model response
+    nonlinear_response: Nonlinear model response
+    eq_point: Equilibrium point parameters dictionary
     
-    返回:
-    matplotlib figure对象
+    Returns:
+    matplotlib figure object
     """
-    # 确保两个响应的时间向量长度相同
+    # Ensure the two response time vectors have the same length
     min_length = min(len(linear_response['time']), len(nonlinear_response['time']))
     
-    # 提取数据
+    # Extract data
     time = linear_response['time'][:min_length]
     
-    # 修正线性响应的维度
+    # Check if setpoint is available
+    has_setpoint = 'setpoint' in linear_response and 'setpoint' in nonlinear_response
+    
+    # Fix linear response dimensions
     linear_output = linear_response['output']
     if linear_output.ndim > 1:
         linear_output = linear_output.flatten()
         
-    # 确保状态矩阵的维度是正确的
+    # Ensure state matrix dimensions are correct
     if linear_response['states'].ndim == 1:
         linear_response['states'] = linear_response['states'].reshape(1, -1)
     if nonlinear_response['states'].ndim == 1:
         nonlinear_response['states'] = nonlinear_response['states'].reshape(1, -1)
     
-    # 如果没有提供平衡点，假设为零
+    # If no equilibrium point is provided, assume zero
     if eq_point is None:
         eq_point = {
             'x_eq': 0,
@@ -330,59 +342,65 @@ def plot_comparison(linear_response, nonlinear_response, eq_point=None):
     P_l_eq = eq_point.get('P_l_eq', 0)
     P_r_eq = eq_point.get('P_r_eq', 0)
     
-    # 调整线性响应，加上平衡点
+    # Adjust linear response, add equilibrium point
     linear_position = linear_response['states'][0, :min_length] + x_eq
     linear_velocity = linear_response['states'][1, :min_length] + v_eq
     linear_P_l = linear_response['states'][2, :min_length] + P_l_eq
     linear_P_r = linear_response['states'][3, :min_length] + P_r_eq
     
-    # 提取非线性响应
+    # Extract nonlinear response
     nonlinear_position = nonlinear_response['states'][0, :min_length]
     nonlinear_velocity = nonlinear_response['states'][1, :min_length]
     nonlinear_P_l = nonlinear_response['states'][2, :min_length]
     nonlinear_P_r = nonlinear_response['states'][3, :min_length]
     
-    # 创建2x2的子图布局
+    # Create 2x2 subplot layout
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle('线性与非线性模型比较', fontsize=16)
+    fig.suptitle('Linear vs Nonlinear Model Comparison', fontsize=16)
     
-    # 位置对比图
-    axs[0, 0].plot(time, linear_position, 'b-', linewidth=2, label='线性模型')
-    axs[0, 0].plot(time, nonlinear_position, 'r--', linewidth=2, label='非线性模型')
-    axs[0, 0].set_title('位置对比')
-    axs[0, 0].set_xlabel('时间 (s)')
-    axs[0, 0].set_ylabel('位置 (m)')
+    # Position comparison plot
+    axs[0, 0].plot(time, linear_position, 'b-', linewidth=2, label='Linear Model')
+    axs[0, 0].plot(time, nonlinear_position, 'r--', linewidth=2, label='Nonlinear Model')
+    
+    # Add setpoint if available
+    if has_setpoint:
+        setpoint = linear_response['setpoint'][:min_length]
+        axs[0, 0].plot(time, setpoint, 'g-.', linewidth=2, label='Setpoint')
+    
+    axs[0, 0].set_title('Position Comparison')
+    axs[0, 0].set_xlabel('Time (s)')
+    axs[0, 0].set_ylabel('Position (m)')
     axs[0, 0].grid(True)
     axs[0, 0].legend()
     
-    # 速度对比图
-    axs[0, 1].plot(time, linear_velocity, 'b-', linewidth=2, label='线性模型')
-    axs[0, 1].plot(time, nonlinear_velocity, 'r--', linewidth=2, label='非线性模型')
-    axs[0, 1].set_title('速度对比')
-    axs[0, 1].set_xlabel('时间 (s)')
-    axs[0, 1].set_ylabel('速度 (m/s)')
+    # Velocity comparison plot
+    axs[0, 1].plot(time, linear_velocity, 'b-', linewidth=2, label='Linear Model')
+    axs[0, 1].plot(time, nonlinear_velocity, 'r--', linewidth=2, label='Nonlinear Model')
+    axs[0, 1].set_title('Velocity Comparison')
+    axs[0, 1].set_xlabel('Time (s)')
+    axs[0, 1].set_ylabel('Velocity (m/s)')
     axs[0, 1].grid(True)
     axs[0, 1].legend()
     
-    # 左气室压力对比图
-    axs[1, 0].plot(time, linear_P_l/1000, 'b-', linewidth=2, label='线性模型')
-    axs[1, 0].plot(time, nonlinear_P_l/1000, 'r--', linewidth=2, label='非线性模型')
-    axs[1, 0].set_title('左气室压力对比')
-    axs[1, 0].set_xlabel('时间 (s)')
-    axs[1, 0].set_ylabel('压力 (kPa)')
+    # Left chamber pressure comparison plot
+    axs[1, 0].plot(time, linear_P_l/1000, 'b-', linewidth=2, label='Linear Model')
+    axs[1, 0].plot(time, nonlinear_P_l/1000, 'r--', linewidth=2, label='Nonlinear Model')
+    axs[1, 0].set_title('Left Chamber Pressure Comparison')
+    axs[1, 0].set_xlabel('Time (s)')
+    axs[1, 0].set_ylabel('Pressure (kPa)')
     axs[1, 0].grid(True)
     axs[1, 0].legend()
     
-    # 右气室压力对比图
-    axs[1, 1].plot(time, linear_P_r/1000, 'b-', linewidth=2, label='线性模型')
-    axs[1, 1].plot(time, nonlinear_P_r/1000, 'r--', linewidth=2, label='非线性模型')
-    axs[1, 1].set_title('右气室压力对比')
-    axs[1, 1].set_xlabel('时间 (s)')
-    axs[1, 1].set_ylabel('压力 (kPa)')
+    # Right chamber pressure comparison plot
+    axs[1, 1].plot(time, linear_P_r/1000, 'b-', linewidth=2, label='Linear Model')
+    axs[1, 1].plot(time, nonlinear_P_r/1000, 'r--', linewidth=2, label='Nonlinear Model')
+    axs[1, 1].set_title('Right Chamber Pressure Comparison')
+    axs[1, 1].set_xlabel('Time (s)')
+    axs[1, 1].set_ylabel('Pressure (kPa)')
     axs[1, 1].grid(True)
     axs[1, 1].legend()
     
-    # 调整布局
+    # Adjust layout
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     return fig
