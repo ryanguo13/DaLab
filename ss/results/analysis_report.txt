@@ -4,45 +4,44 @@
 
 系统参数:
 -----------------------------------------
-m_ball: 0.05
-A: 0.001
-f_v: 0.1
-V_tube: 0.01
-L_tube: 0.5
+m_ball: 0.003
+A: 0.0001
+f_v: 0.05
+V_tube: 0.0015
+L_tube: 0.15
 P_s: 500000
 P_atm: 101325
-x_eq: 0.25
-P_l_eq: 200000
-P_r_eq: 200000
+x_s: 0.1
+x_eq: 0.075
+P_l_eq: 180000
+P_r_eq: 180000
+t_span: (0, 15.0)
+x_b: 0.0010000000000000009
+v_b: 0.0
+P_l: 101325.0
+P_r: 101325.0
 
 控制器参数:
 -----------------------------------------
 期望极点: -3,-3.5,-4,-4.5
-PID参数: Kp=0.3, Ki=0.0, Kd=20.0
-
-模拟参数:
------------------------------------------
-模拟时间: 28.0 s
-时间步长: 0.01 s
-初始状态: 0.26,0,200000,200000
-PID控制持续时间: 28.0 s
 
 分析结果摘要:
 -----------------------------------------
-PID控制模拟:
-  已生成PID控制响应图表
+线性系统分析:
+  系统稳定性: 稳定
+  系统可控性: 可控
+  系统可观性: 不可观
 
 生成的图表文件:
 -----------------------------------------
-  linear_nonlinear_comparison.png
-  nonlinear_state_space.png
   bode_plot.png
+  basic_simulation_results.png
   linear_response.png
-  nonlinear_response.png
+  basic_simulation_pwm.png
   linear_state_space.png
-  pid_control_response.png
+  basic_simulation_position.png
   root_locus.png
 
 =========================================
 分析报告生成完成
-生成时间: 2025-04-22 00:19:03
+生成时间: 2025-04-29 16:14:03

@@ -29,8 +29,7 @@ try:
         plot_state_space, 
         plot_root_locus, 
         plot_bode, 
-        plot_pid_response, 
-        plot_comparison
+        plot_pid_response
     )
 except ImportError as e:
     print(f"导入visualization模块失败: {e}")
